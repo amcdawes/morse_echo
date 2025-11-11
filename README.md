@@ -54,4 +54,4 @@ Troubleshooting
 - If audio playback fails: ensure your system has an audio output device and that `sounddevice` was installed successfully.
 
 License
-- MIT (you can change this as desired).
+- MIT
