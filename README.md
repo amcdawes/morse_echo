@@ -1,5 +1,7 @@
 # morse-echo — Morse Code Trainer
 
+![Screenshot](screenshot.png)
+
 A small NiceGUI-based training app that plays single characters in Morse code and measures your reaction time. Built for quick practice sessions to improve Morse recognition speed.
 
 Features
