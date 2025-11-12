@@ -49,6 +49,7 @@ class MorseGame:
         # UI elements
         self.score_list = None
         self.status_label = None
+        self.summary_label = None
         self.start_button = None
         self.stop_button = None
         self.length_input = None
@@ -96,6 +97,7 @@ class MorseGame:
                             self.start_button = ui.button('Start', on_click=self.start_session).classes('flex-1')
                             self.stop_button = ui.button('Stop', on_click=self.stop_session).classes('flex-1')
                         self.status_label = ui.label('Press Start to begin').classes('text-gray-600 mt-1')
+                        self.summary_label = ui.label('').classes('mt-2 text-sm')
                     
                     # Graph section
                     with ui.card().classes('w-full p-3 mt-3'):
@@ -292,15 +294,17 @@ class MorseGame:
             correct = sum(1 for (_, _, c, _) in self.scores if c)
             total = len(self.scores)
             percentage = (correct / total * 100) if total > 0 else 0
-            self.score_display.text = f'Final Score: {correct}/{total} ({percentage:.1f}%)'
+            # also compute average response time for correct answers
+            correct_times = [t for (_, t, c, _) in self.scores if c]
+            avg = (sum(correct_times) / len(correct_times)) if correct_times else None
+            avg_text = f"{avg:.2f}s" if avg is not None else "N/A"
+            self.score_display.text = f'Final Score: {correct}/{total} ({percentage:.1f}%), Avg: {avg_text}'
         # Play a bell to indicate session end
         try:
             self.play_bell()
         except Exception:
             # if audio fails, just continue
             pass
-        self.status_label.text = 'Session stopped.'
-        self.status_label.classes('text-gray-600')
         self.update_ui()
 
 
