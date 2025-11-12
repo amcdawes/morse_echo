@@ -23,7 +23,8 @@ class MorseGame:
         
         # Audio parameters
         self.sample_rate = 44100
-        self.dot_duration = 0.1
+        self.wpm = 20  # Default words per minute
+        self.dot_duration = self._calculate_dot_duration(self.wpm)
         self.dash_duration = self.dot_duration * 3
         self.frequency = 800
         
@@ -44,7 +45,6 @@ class MorseGame:
         self.scores = []  # (played_char, time, correct, pressed_char)
         self.best_score = float('inf')
         self._is_playing = False
-        self._char_generation = 0  # Incremented each time we play a new character
 
         # UI elements
         self.score_list = None
@@ -52,8 +52,9 @@ class MorseGame:
         self.start_button = None
         self.stop_button = None
         self.length_input = None
-        self.avg_history = []  # list of average response times after each correct answer
-        self._replay_timer = None
+        self.wpm_slider = None
+        self.response_times = []  # list of response times for correct answers
+        self.score_display = None
 
         self.create_ui()
     
@@ -63,29 +64,52 @@ class MorseGame:
             timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]
             print(f"[{timestamp}] {message}")
     
+    def _calculate_dot_duration(self, wpm):
+        """Calculate dot duration from WPM. Standard word = 50 dot durations (PARIS method)."""
+        return 1.2 / wpm
+    
+    def update_wpm(self, new_wpm):
+        """Update WPM and recalculate timing."""
+        self.wpm = new_wpm
+        self.dot_duration = self._calculate_dot_duration(new_wpm)
+        self.dash_duration = self.dot_duration * 3
+        self.log(f"update_wpm: WPM set to {new_wpm}, dot_duration={self.dot_duration:.3f}s")
+    
     def create_ui(self):
-        with ui.column().classes('w-full items-center justify-center'):
-            ui.label('Morse Code Trainer').classes('text-2xl mb-4')
-            # Session controls: put the length input above the buttons and make it wider
-            with ui.row().classes('gap-4 mb-4'):
-                with ui.column():
-                    self.length_input = ui.number(label='Session Length (seconds)', value=60, min=10, max=600).classes('w-64')
-                    with ui.row().classes('gap-2 mt-2'):
-                        self.start_button = ui.button('Start', on_click=self.start_session).classes('w-32')
-                        self.stop_button = ui.button('Stop', on_click=self.stop_session).classes('w-32')
-            self.status_label = ui.label('Press Start to begin').classes('text-gray-600')
-            ui.label('Recent Results:').classes('mt-4')
-            # Results and chart area
-            with ui.row().classes('items-start gap-6'):
-                with ui.column().classes('w-96'):
-                    self.score_list = ui.html('', sanitize=False).classes('h-48 overflow-y-auto font-mono pr-4')
-                with ui.column().classes('w-96'):
-                    ui.label('Average response time').classes('mb-2')
-                    # placeholder for SVG chart; update in update_ui
-                    self.chart = ui.html('', sanitize=False).classes('w-96')
+        with ui.column().classes('w-full items-center justify-center p-4'):
+            # Score display in top right
+            with ui.row().classes('w-full justify-end mb-2'):
+                self.score_display = ui.label('').classes('text-xl font-bold')
+            
+            # Two-column layout
+            with ui.row().classes('gap-6 w-full items-start justify-center'):
+                # Left column: Controls and Graph
+                with ui.column().classes('flex-none').style('width: 400px'):
+                    # Controls section
+                    with ui.card().classes('w-full p-3'):
+                        ui.label('Session Controls').classes('text-lg font-bold mb-1')
+                        self.length_input = ui.number(label='Session Length (seconds)', value=60, min=10, max=600).classes('w-full')
+                        self.wpm_slider = ui.slider(min=10, max=30, step=2, value=20).props('label-always').classes('w-full mt-1')
+                        ui.label().bind_text_from(self.wpm_slider, 'value', backward=lambda v: f'Speed: {v} WPM')
+                        self.wpm_slider.on_value_change(lambda e: self.update_wpm(e.value))
+                        with ui.row().classes('gap-2 mt-2 w-full'):
+                            self.start_button = ui.button('Start', on_click=self.start_session).classes('flex-1')
+                            self.stop_button = ui.button('Stop', on_click=self.stop_session).classes('flex-1')
+                        self.status_label = ui.label('Press Start to begin').classes('text-gray-600 mt-1')
+                    
+                    # Graph section
+                    with ui.card().classes('w-full p-3 mt-3'):
+                        ui.label('Response Time').classes('text-lg font-bold mb-1')
+                        self.chart = ui.html('', sanitize=False).classes('w-full')
+                
+                # Right column: Results history (taller, fixed width)
+                with ui.column().classes('flex-none').style('width: 400px'):
+                    with ui.card().classes('w-full p-3 h-full'):
+                        ui.label('Session History').classes('text-lg font-bold mb-1')
+                        self.score_list = ui.html('', sanitize=False).classes('overflow-y-auto font-mono pr-2').style('height: 600px')
     
     def update_ui(self):
-        # Update score history
+        # Update score history (show more items now that we have taller display)
         def render_row(item):
             played_char, t, correct, pressed = item
             if correct:
@@ -94,26 +118,26 @@ class MorseGame:
                 return f'<span style="color: red">ERROR - played: {played_char}, pressed: {pressed}</span>'
 
         scores_html = '<br>'.join(
-            render_row(item) for item in reversed(self.scores[-20:])
+            render_row(item) for item in reversed(self.scores)
         )
-        self.score_list.content = f'<div style="white-space: pre-wrap">{scores_html}</div>'
+        self.score_list.content = f'<div style="white-space: pre-wrap">{scores_html if scores_html else "No results yet"}</div>'
         if not self.session_active:
             self.status_label.text = 'Press Start to begin'
             self.status_label.classes('text-gray-600')
 
-        # Update average response time chart (simple SVG sparkline)
-        if self.avg_history:
+        # Update response time chart (simple SVG sparkline)
+        if self.response_times:
             width = 360
             height = 120
             padding = 8
-            vals = self.avg_history[-40:]
+            vals = self.response_times[-40:]  # Show last 40 responses
             max_v = max(vals) if vals else 1.0
             min_v = min(vals) if vals else 0.0
             span = max_v - min_v if max_v > min_v else 1.0
             pts = []
             for i, v in enumerate(vals):
-                x = padding + i * (width - 2 * padding) / max(1, len(vals) - 1)
-                y = padding + (height - 2 * padding) * (1 - (v - min_v) / span)
+                x = padding + i * (width - 2 * padding) / max(1, len(vals) - 1) if len(vals) > 1 else padding + (width - 2 * padding) / 2
+                y = padding + (height - 2 * padding) * (1 - (v - min_v) / span) if span > 0 else padding + (height - 2 * padding) / 2
                 pts.append(f"{x:.1f},{y:.1f}")
             poly = ' '.join(pts)
             svg = f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg">'
@@ -121,13 +145,13 @@ class MorseGame:
             svg += f'<polyline fill="none" stroke="#2b8bdb" stroke-width="2" points="{poly}" />'
             # draw last value
             last = vals[-1]
-            last_x = padding + (len(vals) - 1) * (width - 2 * padding) / max(1, len(vals) - 1)
-            last_y = padding + (height - 2 * padding) * (1 - (last - min_v) / span)
+            last_x = padding + (len(vals) - 1) * (width - 2 * padding) / max(1, len(vals) - 1) if len(vals) > 1 else padding + (width - 2 * padding) / 2
+            last_y = padding + (height - 2 * padding) * (1 - (last - min_v) / span) if span > 0 else padding + (height - 2 * padding) / 2
             svg += f'<circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="3" fill="#2b8bdb" />'
             svg += '</svg>'
             self.chart.content = svg
         else:
-            self.chart.content = '<div style="color: #666">No data yet</div>'
+            self.chart.content = '<div style="color: #666; padding: 20px">No data yet</div>'
     
     def generate_tone(self, duration):
         """Generate a tone with smooth attack/release envelope to reduce clicks."""
@@ -186,67 +210,10 @@ class MorseGame:
             return
         self._is_playing = True
         self.play_time = datetime.now()
-        # Increment generation for this new character
-        self._char_generation += 1
-        current_generation = self._char_generation
-        self.log(f"play_morse_and_reset_timer: Playing morse for '{self.current_char}', play_time={self.play_time}, generation={current_generation}")
+        self.log(f"play_morse_and_reset_timer: Playing morse for '{self.current_char}', play_time={self.play_time}")
         self.play_morse(morse_sequence)
         self._is_playing = False
-        # schedule a one-shot replay after 1.5s if no answer
-        try:
-            # cancel previous scheduled replay if any
-            if self._replay_timer is not None:
-                self.log("play_morse_and_reset_timer: Cancelling previous replay timer")
-                try:
-                    self._replay_timer.stop()
-                except Exception:
-                    pass
-                self._replay_timer = None
-        finally:
-            # schedule new one-shot timer with lambda to capture the current generation
-            self.log(f"play_morse_and_reset_timer: Scheduling replay timer for 1.5s (generation={current_generation})")
-            self._replay_timer = ui.timer(1.5, lambda: self._replay_if_still_waiting(current_generation), once=True)
 
-    def _cancel_replay_timer(self):
-        if self._replay_timer is not None:
-            self.log("_cancel_replay_timer: Cancelling replay timer")
-            try:
-                self._replay_timer.stop()
-            except Exception:
-                pass
-            self._replay_timer = None
-        else:
-            self.log("_cancel_replay_timer: No replay timer to cancel")
-
-    def _replay_if_still_waiting(self, expected_generation):
-        # Called by the one-shot timer after 1.5s; play again only if session still waiting for input
-        self.log(f"_replay_if_still_waiting: Called (session_active={self.session_active}, current_char={self.current_char}, play_time={self.play_time}, expected_gen={expected_generation}, current_gen={self._char_generation})")
-        
-        # Clear the timer reference immediately to prevent double-firing
-        self._replay_timer = None
-        
-        # Check if this timer is for the current character generation
-        if expected_generation != self._char_generation:
-            self.log(f"_replay_if_still_waiting: Stale timer (expected gen {expected_generation}, current gen {self._char_generation}), ignoring")
-            return
-        
-        if not self.session_active or self.current_char is None or self.play_time is None:
-            self.log("_replay_if_still_waiting: Conditions not met, skipping replay")
-            return
-        
-        # ensure enough time has actually elapsed
-        elapsed = (datetime.now() - self.play_time).total_seconds()
-        self.log(f"_replay_if_still_waiting: Elapsed={elapsed:.3f}s, _is_playing={self._is_playing}")
-        
-        if elapsed >= 1.5 and not self._is_playing:
-            # Set playing flag to prevent concurrent replays
-            self._is_playing = True
-            morse = MORSE_CODE[self.current_char]
-            self.log(f"_replay_if_still_waiting: Replaying morse for '{self.current_char}'")
-            self.play_morse(morse)  # Play once without rescheduling another replay timer
-            self._is_playing = False
-        else:
-            self.log("_replay_if_still_waiting: Not replaying (too soon or already playing)")
     
     
     
@@ -270,10 +237,8 @@ class MorseGame:
             if pressed_char == self.current_char:
                 self.scores.append((self.current_char, reaction_time, True, pressed_char))
                 self.best_score = min(self.best_score, reaction_time)
-                # update average history
-                correct_times = [t for (_, t, c, _) in self.scores if c]
-                avg = sum(correct_times) / len(correct_times) if correct_times else 0.0
-                self.avg_history.append(avg)
+                # Add response time to chart data
+                self.response_times.append(reaction_time)
                 self.status_label.text = f'Correct! ({self.current_char})'
                 self.status_label.classes('text-green-600')
                 self.log(f"handle_keypress: CORRECT answer")
@@ -282,11 +247,10 @@ class MorseGame:
                 self.status_label.text = f'Incorrect: you pressed {pressed_char}, expected {self.current_char}'
                 self.status_label.classes('text-red-600')
                 self.log(f"handle_keypress: INCORRECT answer")
-            # clear current prompt and cancel any scheduled replay
-            self.log(f"handle_keypress: Clearing current_char and play_time, cancelling replay timer")
+            # clear current prompt
+            self.log(f"handle_keypress: Clearing current_char and play_time")
             self.current_char = None
             self.play_time = None
-            self._cancel_replay_timer()
             self.update_ui()
             # Move to next character if session is still active
             if self.session_active:
@@ -302,6 +266,7 @@ class MorseGame:
         self.log(f"start_session: Starting session for {self.session_length}s")
         self.status_label.text = 'Session started!'
         self.status_label.classes('text-blue-600')
+        self.score_display.text = ''  # Clear score at start
         self.update_ui()
         # buffer 1 second before first character
         ui.timer(1.0, self.next_char, once=True)
@@ -315,8 +280,6 @@ class MorseGame:
         self.session_active = False
         self.current_char = None
         self.play_time = None
-        # Cancel any pending replay timer
-        self._cancel_replay_timer()
         # Cancel session timer if running
         if hasattr(self, '_session_timer') and self._session_timer is not None:
             try:
@@ -324,6 +287,12 @@ class MorseGame:
             except Exception:
                 pass
             self._session_timer = None
+        # Calculate and display final score
+        if self.scores:
+            correct = sum(1 for (_, _, c, _) in self.scores if c)
+            total = len(self.scores)
+            percentage = (correct / total * 100) if total > 0 else 0
+            self.score_display.text = f'Final Score: {correct}/{total} ({percentage:.1f}%)'
         # Play a bell to indicate session end
         try:
             self.play_bell()
