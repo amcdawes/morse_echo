@@ -38,6 +38,13 @@ python main.py
 
 3. Open your browser to http://localhost:8080
 
+New: gui native mode
+On almalinux, I need to set env accordingly:
+
+`WEBKIT_DISABLE_COMPOSITING_MODE=1 uv run python main.py --native`
+
+Please test native mode and let me know!
+
 Quick usage
 - Use the "Session Length" field to set how long you want to practice (seconds).
 - Click "Start" to begin a session. There is a 1s buffer before the first character is played.
