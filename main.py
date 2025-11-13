@@ -1,3 +1,6 @@
+import multiprocessing
+multiprocessing.set_start_method("spawn", force=True)
+
 from nicegui import ui
 import numpy as np
 import sounddevice as sd
@@ -678,6 +681,7 @@ class MorseGame:
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Morse Code Echo Game')
 parser.add_argument('--debug', action='store_true', help='Enable debug logging to console')
+parser.add_argument('--native', action='store_true', help='Run as native app using pywebview')
 args = parser.parse_args()
 
 # Create game instance and set up keyboard handler
@@ -685,4 +689,7 @@ game = MorseGame(debug=args.debug)
 ui.keyboard(on_key=game.handle_keypress)
 
 # Start the app
-ui.run(title='Morse Code Echo Game')
+if args.native:
+    ui.run(title='Morse Code Echo Game', native=True, window_size=(1100, 800))
+else:
+    ui.run(title='Morse Code Echo Game')
