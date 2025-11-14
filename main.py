@@ -19,7 +19,9 @@ MORSE_CODE = {
     'K': '-.-', 'L': '.-..', 'M': '--', 'N': '-.', 'O': '---',
     'P': '.--.', 'Q': '--.-', 'R': '.-.', 'S': '...', 'T': '-',
     'U': '..-', 'V': '...-', 'W': '.--', 'X': '-..-', 'Y': '-.--',
-    'Z': '--..'
+    'Z': '--..',
+    '0': '-----', '1': '.----', '2': '..---', '3': '...--', '4': '....-',
+    '5': '.....', '6': '-....', '7': '--...', '8': '---..', '9': '----.'
 }
 
 class SessionHistory:
@@ -265,6 +267,7 @@ class MorseGame:
         self.scores = []  # (played_char, time, correct, pressed_char)
         self.best_score = float('inf')
         self._is_playing = False
+        self.include_numbers = False  # Whether to include numbers in training
 
         # UI elements
         self.score_list = None
@@ -329,6 +332,8 @@ class MorseGame:
                     self.wpm_slider = ui.slider(min=10, max=30, step=2, value=20).props('label-always').classes('w-full mt-1')
                     ui.label().bind_text_from(self.wpm_slider, 'value', backward=lambda v: f'Speed: {v} WPM')
                     self.wpm_slider.on_value_change(lambda e: self.update_wpm(e.value))
+                    self.numbers_checkbox = ui.checkbox('Include Numbers (0-9)', value=False).classes('mt-1')
+                    self.numbers_checkbox.on_value_change(lambda e: setattr(self, 'include_numbers', e.value))
                     with ui.row().classes('gap-2 mt-2 w-full'):
                         self.start_button = ui.button('Start', on_click=self.start_session).classes('flex-1')
                         self.stop_button = ui.button('Stop', on_click=self.stop_session).classes('flex-1')
@@ -580,7 +585,14 @@ class MorseGame:
     
     
     def next_char(self):
-        self.current_char = random.choice(list(MORSE_CODE.keys()))
+        # Get available characters based on settings
+        if self.include_numbers:
+            available_chars = list(MORSE_CODE.keys())
+        else:
+            # Only letters (A-Z)
+            available_chars = [c for c in MORSE_CODE.keys() if c.isalpha()]
+        
+        self.current_char = random.choice(available_chars)
         self.log(f"next_char: Selected '{self.current_char}'")
         morse = MORSE_CODE[self.current_char]
         self.play_morse_and_reset_timer(morse)
