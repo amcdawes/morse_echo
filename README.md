@@ -7,9 +7,18 @@ A small NiceGUI-based training app that plays single characters in Morse code an
 Features
 - Play a random character in Morse code and await a single-key response
 - Tracks reaction time for correct answers and marks incorrect attempts
-- Configurable session length (default 60s)
-- Results history and a simple response-time sparkline
+- Configurable session length and WPM (words per minute) speed
+- Auto-replay after 1.5 seconds if no response
+- Session-based training with Start/Stop controls
+- SQLite database for persistent session history
+- History tab with:
+  - Recent sessions table showing date, WPM, duration, accuracy, and average response time
+  - Character statistics grid with color-coded accuracy (green ≥90%, yellow ≥75%, red <75%)
+  - Export to CSV functionality
+  - Clear history option with confirmation dialog
+- Response time sparkline chart during active sessions
 - Bell sound at the end of a session
+- Native app mode (optional, via `--native` flag)
 
 Requirements
 - Python 3.12+ (project uses 3.13 in the workspace)
@@ -24,32 +33,52 @@ uv sync
 Or with pip:
 
 ```zsh
-python -m pip install nicegui numpy sounddevice
+python -m pip install nicegui numpy sounddevice pywebview
 ```
+
+Note: `pywebview` is only needed if you want to run in native app mode.
 
 How to run
 
-1. Activate your Python environment (virtualenv/venv) where packages are installed.
-2. Start the app:
-
+**Browser mode (default):**
 ```zsh
-python main.py
+uv run python main.py
+```
+Then open your browser to http://localhost:8080
+
+**Native app mode:**
+```zsh
+uv run python main.py --native
+```
+Opens as a native window using pywebview (no browser required).
+
+On AlmaLinux, you may need to set an environment variable:
+```zsh
+WEBKIT_DISABLE_COMPOSITING_MODE=1 uv run python main.py --native
 ```
 
-3. Open your browser to http://localhost:8080
-
-New: gui native mode
-On almalinux, I need to set env accordingly:
-
-`WEBKIT_DISABLE_COMPOSITING_MODE=1 uv run python main.py --native`
-
-Please test native mode and let me know!
+**Debug mode:**
+```zsh
+uv run python main.py --debug
+```
+Prints additional logs to the console. Can be combined with `--native`.
 
 Quick usage
-- Use the "Session Length" field to set how long you want to practice (seconds).
-- Click "Start" to begin a session. There is a 1s buffer before the first character is played.
-- Type the letter you heard. If correct, the reaction time is recorded. If incorrect, the attempt is logged and the app moves on.
-- Click "Stop" to end the session early. A short bell plays when the session ends.
+
+**Starting a session:**
+1. Adjust the "Session Length" (seconds) and "WPM" (words per minute) settings
+2. Click "Start" to begin - there's a 1-second buffer before the first character plays
+3. Listen to the Morse code character and type the letter you heard
+4. If correct, your reaction time is recorded; if incorrect, the error is logged and you can try again
+5. If you don't respond within 1.5 seconds, the character automatically replays
+6. Click "Stop" to end the session early (a bell sound plays when finished)
+
+**Viewing history:**
+1. Switch to the "History" tab to see:
+   - Recent sessions with accuracy, average response time, and other stats
+   - Character-by-character statistics showing which letters need more practice
+2. Click "Export CSV" to download your session data for external analysis
+3. Click "Clear History" to reset all data (requires confirmation)
 
 Notes and customization
 - Audio is generated in-code using `numpy` and played with `sounddevice`. If your system has no audio devices or `sounddevice` fails, the app will still run but you won't hear prompts.
@@ -58,8 +87,10 @@ Notes and customization
 
 Troubleshooting
 - If the server fails to start, check the terminal logs. NiceGUI prints the address (e.g., http://localhost:8080).
-- run with `--debug` flag to print additional logs to the console.
+- Run with `--debug` flag to print additional logs to the console.
 - If audio playback fails: ensure your system has an audio output device and that `sounddevice` was installed successfully.
+- If native mode doesn't work, ensure `pywebview` is installed and you have the required system dependencies (WebKit on Linux, WebView2 on Windows).
+- Session history is stored in `~/.morse_echo.db` - if you encounter database errors, you can delete this file to start fresh.
 
 License
 - MIT
